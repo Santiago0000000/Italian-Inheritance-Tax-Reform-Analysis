@@ -1,0 +1,126 @@
+// Calcolo incremento gettito imposta di successione
+
+// Parametri attuali
+const gettito_attuale = 800; // milioni di euro
+const dichiarazioni_annue = 95000;
+const franchigia_attuale = 1000000; // euro
+const aliquota_attuale = 0.04;
+
+// Parametri proposta riforma
+const franchigia_ridotta = 100000; // euro (ridotta del 90%)
+const soglia_isee_bassa = 20000; // euro
+const aliquote_irpef = [0.23, 0.35, 0.43];
+const scaglioni_irpef = [28000, 50000, Infinity];
+
+// Distribuzione patrimoniale stimata (dati Banca d'Italia)
+const patrimonio_medio = 302000;
+const concentrazione_top10 = 0.5; // 50% ricchezza nel 10% più ricco
+
+// Stima distribuzione successioni per fascia patrimoniale
+const successioni_per_fascia = {
+    "100k-500k": 25000,  // fascia media-bassa
+    "500k-1M": 12000,    // fascia media-alta  
+    "1M-5M": 8000,       // fascia alta
+    "oltre_5M": 3000     // fascia molto alta
+};
+
+// Stima valore medio successioni per fascia
+const valore_medio_fascia = {
+    "100k-500k": 250000,
+    "500k-1M": 700000,
+    "1M-5M": 2000000,
+    "oltre_5M": 8000000
+};
+
+console.log("=== ANALISI IMPATTO RIFORMA IMPOSTA SUCCESSIONE ===\n");
+
+// Calcolo gettito attuale per verifica
+let gettito_teorico_attuale = 0;
+for (let fascia in successioni_per_fascia) {
+    const numero = successioni_per_fascia[fascia];
+    const valore = valore_medio_fascia[fascia];
+    
+    if (valore > franchigia_attuale) {
+        const base_imponibile = valore - franchigia_attuale;
+        const imposta = base_imponibile * aliquota_attuale;
+        gettito_teorico_attuale += (numero * imposta) / 1000000; // in milioni
+    }
+}
+
+console.log(`Gettito teorico attuale: €${gettito_teorico_attuale.toFixed(0)} milioni`);
+console.log(`Gettito effettivo 2023: €${gettito_attuale} milioni\n`);
+
+// Calcolo del nuovo gettito con la riforma
+function calcolaImpostaProgressiva(valore_ereditario) {
+    const base_imponibile = Math.max(0, valore_ereditario - franchigia_ridotta);
+    let imposta = 0;
+    let residuo = base_imponibile;
+    
+    for (let i = 0; i < scaglioni_irpef.length; i++) {
+        const limite_scaglione = scaglioni_irpef[i];
+        const aliquota = aliquote_irpef[i];
+        
+        if (residuo <= 0) break;
+        
+        const imponibile_scaglione = Math.min(residuo, 
+            i === 0 ? limite_scaglione : limite_scaglione - scaglioni_irpef[i-1]);
+        
+        imposta += imponibile_scaglione * aliquota;
+        residuo -= imponibile_scaglione;
+    }
+    
+    return imposta;
+}
+
+// Stima percentuale eredi con ISEE basso per fascia patrimoniale
+const perc_isee_basso = {
+    "100k-500k": 0.35,  // 35% eredi con ISEE < €20k
+    "500k-1M": 0.25,    // 25% eredi con ISEE < €20k
+    "1M-5M": 0.15,      // 15% eredi con ISEE < €20k  
+    "oltre_5M": 0.05    // 5% eredi con ISEE < €20k
+};
+
+let gettito_nuovo = 0;
+let dettaglio_calcoli = [];
+
+for (let fascia in successioni_per_fascia) {
+    const numero_successioni = successioni_per_fascia[fascia];
+    const valore_medio = valore_medio_fascia[fascia];
+    const perc_eredi_isee_basso = perc_isee_basso[fascia];
+    
+    // Eredi con ISEE basso (mantengono franchigia ridotta)
+    const eredi_isee_basso = numero_successioni * perc_eredi_isee_basso;
+    const imposta_isee_basso = calcolaImpostaProgressiva(valore_medio);
+    const gettito_isee_basso = (eredi_isee_basso * imposta_isee_basso) / 1000000;
+    
+    // Eredi con ISEE alto (nessuna franchigia)
+    const eredi_isee_alto = numero_successioni * (1 - perc_eredi_isee_basso);
+    const imposta_isee_alto = calcolaImpostaProgressiva(valore_medio + franchigia_ridotta);
+    const gettito_isee_alto = (eredi_isee_alto * imposta_isee_alto) / 1000000;
+    
+    const gettito_fascia = gettito_isee_basso + gettito_isee_alto;
+    gettito_nuovo += gettito_fascia;
+    
+    dettaglio_calcoli.push({
+        fascia: fascia,
+        successioni: numero_successioni,
+        valore_medio: valore_medio,
+        gettito_totale: gettito_fascia,
+        gettito_isee_basso: gettito_isee_basso,
+        gettito_isee_alto: gettito_isee_alto
+    });
+}
+
+console.log("=== DETTAGLIO CALCOLI PER FASCIA ===");
+dettaglio_calcoli.forEach(d => {
+    console.log(`\n${d.fascia}:`);
+    console.log(`  Successioni: ${d.successioni.toLocaleString()}`);
+    console.log(`  Valore medio: €${d.valore_medio.toLocaleString()}`);
+    console.log(`  Gettito totale: €${d.gettito_totale.toFixed(1)} milioni`);
+});
+
+console.log("\n=== RISULTATI COMPLESSIVI ===");
+console.log(`Gettito attuale: €${gettito_attuale} milioni`);
+console.log(`Gettito nuovo: €${gettito_nuovo.toFixed(0)} milioni`);
+console.log(`Incremento: €${(gettito_nuovo - gettito_attuale).toFixed(0)} milioni`);
+console.log(`Variazione percentuale: +${(((gettito_nuovo - gettito_attuale) / gettito_attuale) * 100).toFixed(0)}%`);
